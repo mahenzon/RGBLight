@@ -4,15 +4,51 @@
 #include <ESPHelperFS.h>
 #include <ESPHelperWebConfig.h>
 
+// Some configs
+#define DEFAULT_GLEAM_DELAY 10  // 200: 5 minutes  // 2353: 1 hour
 
-#define NET_CONFIG_FILE "/netConfig.json"
+// GPIO pins for light
+#define RED_PIN_LEFT 14
+#define GREEN_PIN_LEFT 16
+#define BLUE_PIN_LEFT 12
 
+#define RED_PIN_RIGHT 4
+#define GREEN_PIN_RIGHT 5
+#define BLUE_PIN_RIGHT 2
+//
 
-netInfo config;
-ESPHelper myESP;
+// topic that ESP8266 will be monitoring for new commands
+#define TOPIC "/home/RGBLight0"
+#define STATUS TOPIC "/status"
+#define STATUS_STR_LEN 50
+//
 
+//
+#define NET_CONFIG_FILE "/netConfig.json"  // just don't change it
 
-ESPHelperWebConfig webConfig;
+// Color related
+#define NUM_LEDS 1
+#define LED_PIN 13
+#define COLOR_ORDER GRB
+#define STATUS_LED_BRIGHTNESS 20  // from 1 to 255
+
+#define ARR_LEN 6
+#define RGB_MAX 255
+#define MAX_STEPS ARR_LEN * RGB_MAX
+
+int rgbRainbowMap[ARR_LEN][3] = {
+  { 1, 0, 0 },
+  { 1, 1, 0 },
+  { 0, 1, 0 },
+  { 0, 1, 1 },
+  { 0, 0, 1 },
+  { 1, 0, 1 },
+};
+
+CRGB led[NUM_LEDS];
+
+//
+
 
 // default net info for unconfigured devices
 netInfo homeNet = {
@@ -27,6 +63,56 @@ netInfo homeNet = {
 };
 
 
+netInfo config;
+ESPHelper myESP;
+
+
+ESPHelperWebConfig webConfig;
+
+
+// 
+
+int min(int a, int b) {
+  return (a < b ? a : b);
+}
+
+enum lightModes { STANDBY, MANUAL, GLEAM };
+
+typedef struct lightState {
+  int mode;
+  int fadePeriod;  // steps (ms) to make full color change
+  int lightStep;
+  Metro lightStepMetro;
+
+  int red;
+  int redStep;
+  int redTagret;
+  int green;
+  int greenStep;
+  int greenTagret;
+  int blue;
+  int blueStep;
+  int blueTagret;
+
+  int gleamStep;
+  Metro gleamMetro;
+
+  int redPin;
+  int greenPin;
+  int bluePin;
+};
+
+lightState lightLeft;
+lightState lightRight;
+
+
+char* lightTopic = TOPIC;
+char* statusTopic = STATUS;
+char statusString[STATUS_STR_LEN];  // line to send
+
+//
+
+
 // timeout before starting AP mode for configuration
 Metro connectTimeout = Metro(20000);
 bool timeout = false;
@@ -35,7 +121,31 @@ bool timeout = false;
 const char* broadcastSSID = "ESP-Hotspot";
 const char* broadcastPASS = "";
 IPAddress broadcastIP = {192, 168, 1, 1};
+//
 
+void configureLightState(struct lightState *lt) {
+  lt->mode = STANDBY;
+  lt->fadePeriod = 1000;
+  lt->lightStep = 0;
+  lt->lightStepMetro = Metro(1);
+
+  lt->red = 0;
+  lt->green = 0;
+  lt->blue = 0;
+
+  lt->redTagret = 255;
+  lt->greenTagret = 255;
+  lt->blueTagret = 255;
+
+  lt->gleamMetro = Metro(DEFAULT_GLEAM_DELAY);
+  lt->gleamStep = 0;
+}
+
+void sendStatus(String statusLine) {
+  statusLine.toCharArray(statusString, min(STATUS_STR_LEN, statusLine.length() + 1));
+  myESP.publish(statusTopic, statusString);
+  // myESP.publish(statusTopic, statusString, true);
+}
 
 
 void setup() {
@@ -66,6 +176,8 @@ void loop() {
   yield();
 }
 
+
+/////////////////////// Network related
 
 // ESPHelper & config setup and runtime handler functions
 void manageESPHelper(int wifiStatus) {
@@ -151,3 +263,4 @@ void checkForWifiTimeout() {
     }
 }
 
+/////////////////////////////////////////////////////////////////////////
