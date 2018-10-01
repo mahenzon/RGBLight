@@ -264,3 +264,115 @@ void checkForWifiTimeout() {
 }
 
 /////////////////////////////////////////////////////////////////////////
+
+
+////// Service. Light control
+
+
+void processLight() {
+  processSideLight(&lightLeft);
+  processSideLight(&lightRight);
+};
+
+
+void processSideLight(struct lightState *lt) {
+  if (lt->mode == MANUAL) {
+    manualLight(lt);
+  } else if (lt->mode == GLEAM) {
+    gleamLight(lt);
+  };
+};
+
+//// Manual settings
+
+void manualLight(struct lightState *lt) {
+  if (lt->lightStepMetro.check() == 0) return;
+
+  if (lt->red != lt->redTagret ||
+      lt->green != lt->greenTagret ||
+      lt->blue != lt->blueTagret) lt->lightStep++;
+  else return;
+
+  /// Only copy-pase :(
+
+  // Check RED
+  if ((lt->red != lt->redTagret) && (lt->lightStep % lt->redStep == 0)) {
+    if (lt->red > lt->redTagret)
+      lt->red--;
+    else
+      lt->red++;
+  }
+  // Check GREEN
+  if ((lt->green != lt->greenTagret) && (lt->lightStep % lt->greenStep == 0)) {
+    if (lt->green > lt->greenTagret)
+      lt->green--;
+    else
+      lt->green++;
+  }
+  // Check BLUE
+  if ((lt->blue != lt->blueTagret) && (lt->lightStep % lt->blueStep == 0)) {
+    if (lt->blue > lt->blueTagret)
+      lt->blue--;
+    else
+      lt->blue++;
+  }
+
+  /// ^
+
+  applyLight(lt);
+};
+
+//
+
+//// Gleam
+
+void gleamLight(struct lightState *lt) {
+  if (lt->gleamMetro.check() == 0) return;
+
+  if (lt->gleamStep >= MAX_STEPS) {
+    lt->gleamStep = 0;
+  };
+  lt->gleamStep++;
+  gleamRgb(lt);
+};
+
+
+void gleamRgb(struct lightState *lt) {
+
+  int rgb[3] = {0, 0, 0};
+  const int index = lt->gleamStep / RGB_MAX;
+  const int _mod = lt->gleamStep % RGB_MAX;
+  const int _nxt = index + 1;
+  const int next = (_nxt < ARR_LEN) ? _nxt : 0;
+
+  for (int i = 0; i < 3; i++) {
+    const int section = rgbRainbowMap[index][i];
+    const int nextSection = rgbRainbowMap[next][i];
+    if (section == nextSection)
+      rgb[i] = section * RGB_MAX;
+    else if (section > nextSection)
+      rgb[i] = RGB_MAX - _mod;
+    else
+      rgb[i] = _mod;
+  };
+
+  lt->red = rgb[0];
+  lt->green = rgb[1];
+  lt->blue = rgb[2];
+  applyLight(lt);
+};
+//
+
+void showColor(struct lightState *lt, int red, int green, int blue) {
+  lt->red = red;
+  lt->green = green;
+  lt->blue = blue;
+  applyLight(lt);
+};
+
+
+void applyLight(struct lightState *lt) {
+  analogWrite(lt->redPin, lt->red);
+  analogWrite(lt->greenPin, lt->green);
+  analogWrite(lt->bluePin, lt->blue);
+}
