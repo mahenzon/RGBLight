@@ -6,6 +6,8 @@
 
 // Some configs
 #define DEFAULT_GLEAM_DELAY 10  // 200: 5 minutes  // 2353: 1 hour
+#define DISABLE_LED_ON_SUCCESS_AFTER 30000  // 30000ms = 30 seconds. Disable status LED
+//
 
 // GPIO pins for light
 #define RED_PIN_LEFT 14
@@ -70,7 +72,7 @@ ESPHelper myESP;
 ESPHelperWebConfig webConfig;
 
 
-// 
+//
 
 int min(int a, int b) {
   return (a < b ? a : b);
@@ -112,6 +114,10 @@ char statusString[STATUS_STR_LEN];  // line to send
 
 //
 
+//
+Metro ledTimeout = Metro(DISABLE_LED_ON_SUCCESS_AFTER);
+bool ledTimedOut = false;
+
 
 // timeout before starting AP mode for configuration
 Metro connectTimeout = Metro(20000);
@@ -147,6 +153,10 @@ void sendStatus(String statusLine) {
   // myESP.publish(statusTopic, statusString, true);
 }
 
+void showStatus(CRGB color) {
+    led[0] = color;
+    FastLED.show();
+}
 
 void setup() {
   Serial.begin(115200);  // Serial debug prints
@@ -155,6 +165,19 @@ void setup() {
   Serial.println("");  // Serial debug prints
   Serial.println("Starting Up - Please Wait...");  // Serial debug prints
   delay(100);
+
+  //
+  analogWriteRange(256);
+
+  // Setup FastLED
+  FastLED.addLeds<WS2812, LED_PIN, COLOR_ORDER>(led, NUM_LEDS);
+  FastLED.setBrightness(STATUS_LED_BRIGHTNESS);
+  // Show status RED color
+  showStatus(CRGB::Red);
+
+  // Configure MQTT
+  myESP.addSubscription(lightTopic);
+  myESP.setCallback(callbackMQTT);
 
   // startup the Wi-Fi and web server
   startWifi();
@@ -173,9 +196,19 @@ void setup() {
 
 void loop() {
   manageESPHelper(myESP.loop());
+  turnOffStatusLEDifTimedOut();
   yield();
 }
 
+void turnOffStatusLEDifTimedOut() {
+    if (ledTimedOut) return;
+    if (ledTimeout.check()) {
+        showStatus(CRGB::White);
+        delay(30);  // No long delays to keep Wi-Fi and MQTT connected
+        showStatus(CRGB::Black);
+        ledTimedOut = true;
+    }
+}
 
 /////////////////////// Network related
 
@@ -191,10 +224,12 @@ void manageESPHelper(int wifiStatus) {
     checkForWifiTimeout();
   }
   // handle saving a new network config
-  if (webConfig.handle()){
+  if (webConfig.handle()) {
+    // Turn off status LED
+    showStatus(CRGB::Black);
     Serial.println("Saving new network config and restarting...");  // Serial debug prints
     myESP.saveConfigFile(webConfig.getConfig(), NET_CONFIG_FILE);
-    delay(500);
+    delay(1000);
     ESP.restart();
   }
 }
@@ -249,14 +284,18 @@ void startWifi() {
     yield();
   }
 
+  showStatus(CRGB::Green);
+  ledTimeout.reset();
   Serial.println("Sucess!");  // Serial debug prints
   Serial.println(String("To connect to this device go to " + String(myESP.getIP())));  // Serial debug prints
+  sendStatus("Starting with IP " + myESP.getIP());  // Serial debug prints
 }
 
 // function that checks for no network connection for a period of time 
 // and starting up AP mode when that time has elapsed
 void checkForWifiTimeout() {
   if (connectTimeout.check() && !timeout) {
+      showStatus(CRGB::Purple);
       Serial.println("Network Connection timeout - starting broadcast (AP) mode...");  // Serial debug prints
       timeout = true;
       myESP.broadcastMode(broadcastSSID, broadcastPASS, broadcastIP);
@@ -376,3 +415,19 @@ void applyLight(struct lightState *lt) {
   analogWrite(lt->greenPin, lt->green);
   analogWrite(lt->bluePin, lt->blue);
 }
+
+
+// MQTT ----
+
+void callbackMQTT(char* topic, byte* payload, unsigned int length) {
+
+  char newPayload[40];
+  memcpy(newPayload, payload, length);
+  newPayload[length] = '\0';
+
+  Serial.println("MQTT Message arrived: " + String(newPayload));  // Serial debug prints
+
+  strcpy(statusString, newPayload);
+  myESP.publish(statusTopic, statusString);
+}
+
