@@ -145,6 +145,11 @@ void configureLightState(struct lightState *lt) {
 
   lt->gleamMetro = Metro(DEFAULT_GLEAM_DELAY);
   lt->gleamStep = 0;
+
+  // Initialize pins as output
+  pinMode(lt->redPin, OUTPUT);
+  pinMode(lt->greenPin, OUTPUT);
+  pinMode(lt->bluePin, OUTPUT);
 }
 
 void sendStatus(String statusLine) {
@@ -166,14 +171,30 @@ void setup() {
   Serial.println("Starting Up - Please Wait...");  // Serial debug prints
   delay(100);
 
-  //
-  analogWriteRange(256);
-
   // Setup FastLED
   FastLED.addLeds<WS2812, LED_PIN, COLOR_ORDER>(led, NUM_LEDS);
   FastLED.setBrightness(STATUS_LED_BRIGHTNESS);
   // Show status RED color
   showStatus(CRGB::Red);
+
+  //
+  analogWriteRange(256);
+
+  // Setup light states
+
+  lightLeft.redPin = RED_PIN_LEFT;
+  lightLeft.greenPin = GREEN_PIN_LEFT;
+  lightLeft.bluePin = BLUE_PIN_LEFT;
+
+  lightRight.redPin = RED_PIN_RIGHT;
+  lightRight.greenPin = GREEN_PIN_RIGHT;
+  lightRight.bluePin = BLUE_PIN_RIGHT;
+
+  configureLightState(&lightLeft);
+  configureLightState(&lightRight);
+
+  colorTest();
+  //
 
   // Configure MQTT
   myESP.addSubscription(lightTopic);
@@ -196,8 +217,9 @@ void setup() {
 
 void loop() {
   manageESPHelper(myESP.loop());
-  turnOffStatusLEDifTimedOut();
+  processLight();
   yield();
+  turnOffStatusLEDifTimedOut();
 }
 
 void turnOffStatusLEDifTimedOut() {
@@ -322,6 +344,29 @@ void processSideLight(struct lightState *lt) {
   };
 };
 
+
+void colorTest() {
+  Serial.println("Doing colorTest");  // Serial debug prints
+
+  showColor(&lightLeft, 255, 0, 0);
+  showColor(&lightRight, 255, 0, 0);
+  delay(500);
+  showColor(&lightLeft, 0, 255, 0);
+  showColor(&lightRight, 0, 255, 0);
+  delay(500);
+  showColor(&lightLeft, 0, 0, 255);
+  showColor(&lightRight, 0, 0, 255);
+  delay(500);
+  showColor(&lightLeft, 255, 255, 255);
+  showColor(&lightRight, 255, 255, 255);
+  delay(500);
+  showColor(&lightLeft, 0, 0, 0);
+  showColor(&lightRight, 0, 0, 0);
+
+  Serial.println("Finished colorTest");  // Serial debug prints
+};
+
+
 //// Manual settings
 
 void manualLight(struct lightState *lt) {
@@ -421,7 +466,7 @@ void applyLight(struct lightState *lt) {
 
 void callbackMQTT(char* topic, byte* payload, unsigned int length) {
 
-  char newPayload[40];
+  char newPayload[42];
   memcpy(newPayload, payload, length);
   newPayload[length] = '\0';
 
