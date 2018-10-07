@@ -5,9 +5,10 @@
 #include <ESPHelperWebConfig.h>
 
 // Some configs
-#define DEFAULT_GLEAM_DELAY 10  // 200: 5 minutes  // 2353: 1 hour
-#define DISABLE_LED_ON_SUCCESS_AFTER 30000  // 30000ms = 30 seconds. Disable status LED
-#define MAXIMUM_FADE_DURATION 1200
+// #define DEBUG_ENABLED  // Uncomment to print debug info to console
+#define DEFAULT_GLEAM_DELAY 200  // 200: 5 minutes  // 2353: 1 hour
+#define DISABLE_LED_ON_SUCCESS_AFTER 20000  // 20000ms = 20 seconds. Disable status LED
+#define MAXIMUM_FADE_DURATION 1000
 //
 
 // GPIO pins for light
@@ -59,7 +60,7 @@ netInfo homeNet = {
   .mqttUser = "",    //can be blank
   .mqttPass = "",    //can be blank
   .mqttPort = 1883,  //default port for MQTT is 1883 - change only if needed
-  .ssid = "Some Wi-Fi Network", 
+  .ssid = "Some Wi-Fi Network",
   .pass = "1234567890",
   .otaPassword = "12345678",
   .hostname = "ESP_WEB",
@@ -165,11 +166,13 @@ void showStatus(CRGB color) {
 }
 
 void setup() {
-  // Serial.begin(115200);  // Serial debug prints
 
-  // print some debug
-  // Serial.println("");  // Serial debug prints
-  // Serial.println("Starting Up - Please Wait...");  // Serial debug prints
+  #ifdef DEBUG_ENABLED
+    Serial.begin(115200);
+    Serial.println("");
+    Serial.println("Starting Up - Please Wait...");
+  #endif
+
   delay(100);
 
   // Setup FastLED
@@ -211,7 +214,10 @@ void setup() {
   webConfig.setSpiffsReset("/reset");
 
   ///
-  // Serial.println("Leaving setup");  // Serial debug prints
+  #ifdef DEBUG_ENABLED
+    Serial.println("Leaving setup");
+  #endif
+
 
 }
 
@@ -227,7 +233,7 @@ void turnOffStatusLEDifTimedOut() {
     if (ledTimedOut) return;
     if (ledTimeout.check()) {
         showStatus(CRGB::White);
-        delay(30);  // No long delays to keep Wi-Fi and MQTT connected
+        delay(20);  // No long delays to keep Wi-Fi and MQTT connected
         showStatus(CRGB::Black);
         ledTimedOut = true;
     }
@@ -250,7 +256,11 @@ void manageESPHelper(int wifiStatus) {
   if (webConfig.handle()) {
     // Turn off status LED
     showStatus(CRGB::Black);
-    // Serial.println("Saving new network config and restarting...");  // Serial debug prints
+
+    #ifdef DEBUG_ENABLED
+      Serial.println("Saving new network config and restarting...");
+    #endif
+
     myESP.saveConfigFile(webConfig.getConfig(), NET_CONFIG_FILE);
     delay(1000);
     ESP.restart();
@@ -262,14 +272,26 @@ void manageESPHelper(int wifiStatus) {
 void loadConfig() {
   // check for a good config file and start ESPHelper with the file stored on the ESP
   if (ESPHelperFS::begin()) {
-    // Serial.println("Filesystem loaded - Loading Config");  // Serial debug prints
+
+    #ifdef DEBUG_ENABLED
+      Serial.println("Filesystem loaded - Loading Config");
+    #endif
+
     if (ESPHelperFS::validateConfig(NET_CONFIG_FILE) == GOOD_CONFIG) {
-      // Serial.println("Config loaded");  // Serial debug prints
+
+      #ifdef DEBUG_ENABLED
+        Serial.println("Config loaded");
+      #endif
+
       myESP.begin(NET_CONFIG_FILE);
     } else {
-      // if no good config can be loaded (no file/corruption/etc.) 
+      // if no good config can be loaded (no file/corruption/etc.)
       // then attempt to generate a new config and restart the module
-      // Serial.println("Could not load config - saving new config from default values and restarting");  // Serial debug prints
+
+      #ifdef DEBUG_ENABLED
+        Serial.println("Could not load config - saving new config from default values and restarting");
+      #endif
+
       delay(10);
       ESPHelperFS::createConfig(&homeNet, NET_CONFIG_FILE);
       ESPHelperFS::end();
@@ -278,7 +300,11 @@ void loadConfig() {
   } else {
     // if the filesystem cannot be started, just fail over
     // to the built in network config hardcoded in here
-    // Serial.println("Could not load filesystem, proceeding with default config values");  // Serial debug prints
+
+    #ifdef DEBUG_ENABLED
+      Serial.println("Could not load filesystem, proceeding with default config values");
+    #endif
+
     delay(10);
     myESP.begin(&homeNet);
   }
@@ -298,7 +324,11 @@ void startWifi() {
   myESP.OTA_enable();
 
   showStatus(CRGB::DarkOrange);
-  // Serial.println("Connecting to network");  // Serial debug prints
+
+  #ifdef DEBUG_ENABLED
+    Serial.println("Connecting to network");
+  #endif
+
   // connect to Wi-Fi before proceeding.
   // If cannot connect then switch to AP mode and create a network to config from
   while (myESP.loop() < WIFI_ONLY) {
@@ -310,17 +340,28 @@ void startWifi() {
 
   showStatus(CRGB::Green);
   ledTimeout.reset();
-  // Serial.println("Sucess!");  // Serial debug prints
-  // Serial.println(String("To configure this device go to " + String(myESP.getIP())));  // Serial debug prints
+
+  #ifdef DEBUG_ENABLED
+    Serial.println("Sucess!");
+  #endif
+
+  #ifdef DEBUG_ENABLED
+    Serial.println(String("To configure this device go to " + String(myESP.getIP())));
+  #endif
+
   sendStatus("Starting with IP " + myESP.getIP());
 }
 
-// function that checks for no network connection for a period of time 
+// function that checks for no network connection for a period of time
 // and starting up AP mode when that time has elapsed
 void checkForWifiTimeout() {
   if (connectTimeout.check() && !timeout) {
-      showStatus(CRGB::Purple);
-      // Serial.println("Network Connection timeout - starting broadcast (AP) mode...");  // Serial debug prints
+      showStatus(CRGB::Blue);
+
+      #ifdef DEBUG_ENABLED
+        Serial.println("Network Connection timeout - starting broadcast (AP) mode...");
+      #endif
+
       timeout = true;
       myESP.broadcastMode(broadcastSSID, broadcastPASS, broadcastIP);
     }
@@ -348,7 +389,11 @@ void processSideLight(struct lightState *lt) {
 
 
 void colorTest() {
-  // Serial.println("Doing colorTest");  // Serial debug prints
+
+  #ifdef DEBUG_ENABLED
+    Serial.println("Doing colorTest");
+  #endif
+
 
   showColor(&lightLeft, 255, 0, 0);
   showColor(&lightRight, 255, 0, 0);
@@ -365,7 +410,10 @@ void colorTest() {
   showColor(&lightLeft, 0, 0, 0);
   showColor(&lightRight, 0, 0, 0);
 
-  // Serial.println("Finished colorTest");  // Serial debug prints
+  #ifdef DEBUG_ENABLED
+    Serial.println("Finished colorTest");
+  #endif
+
 }
 
 
@@ -418,8 +466,8 @@ void gleamLight(struct lightState *lt) {
   if (lt->gleamStep >= MAX_STEPS) {
     lt->gleamStep = 0;
   };
-  lt->gleamStep++;
   gleamRgb(lt);
+  lt->gleamStep++;
 }
 
 
@@ -442,12 +490,21 @@ void gleamRgb(struct lightState *lt) {
       rgb[i] = _mod;
   };
 
-  // lt->red = rgb[0];
-  // lt->green = rgb[1];
-  // lt->blue = rgb[2];
-  // applyLight(lt);
+  #ifdef DEBUG_ENABLED
+    Serial.print("On gleam step ");
+    Serial.print(lt->gleamStep);
+    Serial.print(" colors are: [");
+    Serial.print(rgb[0]);
+    Serial.print(", ");
+    Serial.print(rgb[1]);
+    Serial.print(", ");
+    Serial.print(rgb[2]);
+    Serial.println("].");
+  #endif
+
   showColor(lt, rgb[0], rgb[1], rgb[2]);
 }
+
 //
 
 void showColor(struct lightState *lt, int red, int green, int blue) {
@@ -468,13 +525,15 @@ void applyLight(struct lightState *lt) {
 void prepareManualColorChange(struct lightState *lt, int redDiff, int greenDiff, int blueDiff) {
   lt->mode = MANUAL;
 
-  // Serial.print("Preparing manual, got in: [");  // Serial debug prints
-  // Serial.print(redDiff);  // Serial debug prints
-  // Serial.print(", ");  // Serial debug prints
-  // Serial.print(greenDiff);  // Serial debug prints
-  // Serial.print(", ");  // Serial debug prints
-  // Serial.print(blueDiff);  // Serial debug prints
-  // Serial.println("].");  // Serial debug prints
+  #ifdef DEBUG_ENABLED
+    Serial.print("Preparing manual, got in: [");
+    Serial.print(redDiff);
+    Serial.print(", ");
+    Serial.print(greenDiff);
+    Serial.print(", ");
+    Serial.print(blueDiff);
+    Serial.println("].");
+  #endif
 
   if (redDiff > 0)
     lt->redStep = lt->fadePeriod / redDiff;
@@ -483,15 +542,15 @@ void prepareManualColorChange(struct lightState *lt, int redDiff, int greenDiff,
   if (blueDiff > 0)
     lt->blueStep = lt->fadePeriod / blueDiff;
 
-
-  // Serial.print("So now steps are: [");  // Serial debug prints
-  // Serial.print(lt->redStep);  // Serial debug prints
-  // Serial.print(", ");  // Serial debug prints
-  // Serial.print(lt->greenStep);  // Serial debug prints
-  // Serial.print(", ");  // Serial debug prints
-  // Serial.print(lt->blueStep);  // Serial debug prints
-  // Serial.println("].");  // Serial debug prints
-
+  #ifdef DEBUG_ENABLED
+    Serial.print("So now steps are: [");
+    Serial.print(lt->redStep);
+    Serial.print(", ");
+    Serial.print(lt->greenStep);
+    Serial.print(", ");
+    Serial.print(lt->blueStep);
+    Serial.println("].");
+  #endif
 
   lt->lightStep = 0;
 }
@@ -505,8 +564,11 @@ void callbackMQTT(char* topic, byte* payload, unsigned int length) {
   memcpy(newPayload, payload, length);
   newPayload[length] = '\0';
 
-  // Serial.println("MQTT Message arrived: " + String(newPayload));  // Serial debug prints
-  
+  #ifdef DEBUG_ENABLED
+    Serial.println("MQTT Message arrived: " + String(newPayload));
+  #endif
+
+
   struct lightState *lt;
 
   if (payload[1] == 'l')
@@ -519,39 +581,54 @@ void callbackMQTT(char* topic, byte* payload, unsigned int length) {
 
   if (mode == 'c') {  // color
 
-    // Serial.println("Searching for numbers..");  // Serial debug prints
+    #ifdef DEBUG_ENABLED
+      Serial.println("Searching for numbers..");
+    #endif
 
     const int newRedTarget = atoi(&newPayload[2]);
     const int newGreenTarget = atoi(&newPayload[6]);
     const int newBlueTarget = atoi(&newPayload[10]);
 
-    // Serial.print("Fetched numbers: [");  // Serial debug prints
-    // Serial.print(newRedTarget);  // Serial debug prints
-    // Serial.print(", ");  // Serial debug prints
-    // Serial.print(newGreenTarget);  // Serial debug prints
-    // Serial.print(", ");  // Serial debug prints
-    // Serial.print(newBlueTarget);  // Serial debug prints
-    // Serial.println("].");  // Serial debug prints
+    #ifdef DEBUG_ENABLED
+      Serial.print("Fetched numbers: [");
+      Serial.print(newRedTarget);
+      Serial.print(", ");
+      Serial.print(newGreenTarget);
+      Serial.print(", ");
+      Serial.print(newBlueTarget);
+      Serial.println("].");
+    #endif
+
 
     if (
       (lt->red != newRedTarget) ||
       (lt->green != newGreenTarget) ||
       (lt->blue != newBlueTarget)
       ) {
-      // Serial.println("Got new colors! Writing them down..");  // Serial debug prints
+
+      #ifdef DEBUG_ENABLED
+        Serial.println("Got new colors! Writing them down..");
+      #endif
 
       lt->redTagret = newRedTarget;
       lt->greenTagret = newGreenTarget;
       lt->blueTagret = newBlueTarget;
 
-      // Serial.println("Preparing..");  // Serial debug prints
+      #ifdef DEBUG_ENABLED
+        Serial.println("Preparing..");
+      #endif
+
       prepareManualColorChange(
         lt,
         (abs(lt->redTagret - lt->red)),
         (abs(lt->greenTagret - lt->green)),
         (abs(lt->blueTagret - lt->blue))
       );
-      // Serial.println("Prepared, done.");  // Serial debug prints
+
+      #ifdef DEBUG_ENABLED
+        Serial.println("Prepared, done.");
+      #endif
+
     }
 
   } else if (mode == 'g') {  // gleam
@@ -560,6 +637,13 @@ void callbackMQTT(char* topic, byte* payload, unsigned int length) {
     const int newGleamInterval = atoi(&newPayload[2]);
     if (newGleamInterval > 0)
       lt->gleamMetro.interval(newGleamInterval);
+
+    // Just for fun show Purple status LED for 2 seconds on gleam interval change
+    showStatus(CRGB::Purple);
+    ledTimedOut = false;
+    ledTimeout.interval(2000);
+    ledTimeout.reset();
+
   } else if (mode == 'p') {  // power on|off
     // "pr1[g|m]" - power right 1 (on) gleam|manual
     // "pl0" - power left 0 (off) (any)
@@ -579,9 +663,13 @@ void callbackMQTT(char* topic, byte* payload, unsigned int length) {
     }
   };
 
-  // Serial.println("Leaving mode check, publishing..");  // Serial debug prints
+  #ifdef DEBUG_ENABLED
+    Serial.println("Leaving mode check, publishing..");
 
-  strcpy(statusString, newPayload);
-  myESP.publish(statusTopic, statusString);
-  // Serial.println("==OK Published!");  // Serial debug prints
+    strcpy(statusString, newPayload);
+    myESP.publish(statusTopic, statusString);
+
+    Serial.println("==OK Published!");
+  #endif
+
 }
