@@ -7,6 +7,7 @@
 // Some configs
 // #define DEBUG_ENABLED  // Uncomment to print debug info to console
 #define DEFAULT_GLEAM_DELAY 200  // 200: 5 minutes  // 2353: 1 hour
+#define WIFI_CONNECT_TIMEOUT 20000  // ms after enable AP mode
 #define DISABLE_LED_ON_SUCCESS_AFTER 20000  // 20000ms = 20 seconds. Disable status LED
 #define MAXIMUM_FADE_DURATION 1000
 //
@@ -118,11 +119,11 @@ char statusString[STATUS_STR_LEN];  // line to send
 
 //
 Metro ledTimeout = Metro(DISABLE_LED_ON_SUCCESS_AFTER);
-bool ledTimedOut = false;
+bool ledTimedOut = true;
 
 
 // timeout before starting AP mode for configuration
-Metro connectTimeout = Metro(20000);
+Metro connectTimeout = Metro(WIFI_CONNECT_TIMEOUT);
 bool timeout = false;
 
 // AP moade setup info
@@ -254,12 +255,13 @@ void manageESPHelper(int wifiStatus) {
   }
   // handle saving a new network config
   if (webConfig.handle()) {
-    // Turn off status LED
-    showStatus(CRGB::Black);
 
     #ifdef DEBUG_ENABLED
       Serial.println("Saving new network config and restarting...");
     #endif
+
+    // Turn off status LED
+    showStatus(CRGB::Black);
 
     myESP.saveConfigFile(webConfig.getConfig(), NET_CONFIG_FILE);
     delay(1000);
@@ -331,6 +333,7 @@ void startWifi() {
 
   // connect to Wi-Fi before proceeding.
   // If cannot connect then switch to AP mode and create a network to config from
+  connectTimeout.reset();
   while (myESP.loop() < WIFI_ONLY) {
     checkForWifiTimeout();
     if (timeout) return;
@@ -339,6 +342,7 @@ void startWifi() {
   }
 
   showStatus(CRGB::Green);
+  ledTimedOut = false;
   ledTimeout.reset();
 
   #ifdef DEBUG_ENABLED
@@ -356,15 +360,15 @@ void startWifi() {
 // and starting up AP mode when that time has elapsed
 void checkForWifiTimeout() {
   if (connectTimeout.check() && !timeout) {
-      showStatus(CRGB::Blue);
 
-      #ifdef DEBUG_ENABLED
-        Serial.println("Network Connection timeout - starting broadcast (AP) mode...");
-      #endif
+    #ifdef DEBUG_ENABLED
+      Serial.println("Network Connection timeout - starting broadcast (AP) mode...");
+    #endif
 
-      timeout = true;
-      myESP.broadcastMode(broadcastSSID, broadcastPASS, broadcastIP);
-    }
+    showStatus(CRGB::Blue);
+    timeout = true;
+    myESP.broadcastMode(broadcastSSID, broadcastPASS, broadcastIP);
+  }
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -491,15 +495,16 @@ void gleamRgb(struct lightState *lt) {
   };
 
   #ifdef DEBUG_ENABLED
-    Serial.print("On gleam step ");
-    Serial.print(lt->gleamStep);
-    Serial.print(" colors are: [");
-    Serial.print(rgb[0]);
-    Serial.print(", ");
-    Serial.print(rgb[1]);
-    Serial.print(", ");
-    Serial.print(rgb[2]);
-    Serial.println("].");
+    // Beware of a lot of information on high gleam speed
+    // Serial.print("On gleam step ");
+    // Serial.print(lt->gleamStep);
+    // Serial.print(" colors are: [");
+    // Serial.print(rgb[0]);
+    // Serial.print(", ");
+    // Serial.print(rgb[1]);
+    // Serial.print(", ");
+    // Serial.print(rgb[2]);
+    // Serial.println("].");
   #endif
 
   showColor(lt, rgb[0], rgb[1], rgb[2]);
@@ -637,6 +642,7 @@ void callbackMQTT(char* topic, byte* payload, unsigned int length) {
     const int newGleamInterval = atoi(&newPayload[2]);
     if (newGleamInterval > 0)
       lt->gleamMetro.interval(newGleamInterval);
+    lt->gleamMetro.reset();
 
     // Just for fun show Purple status LED for 2 seconds on gleam interval change
     showStatus(CRGB::Purple);
