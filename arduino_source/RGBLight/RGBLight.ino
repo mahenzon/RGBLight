@@ -31,12 +31,13 @@
 //
 #define NET_CONFIG_FILE "/netConfig.json"  // just don't change it
 
-// Color related
+// Status LED related
 #define NUM_LEDS 1
 #define LED_PIN 13
 #define COLOR_ORDER GRB
-#define STATUS_LED_BRIGHTNESS 100  // from 1 to 255
+#define STATUS_LED_BRIGHTNESS 200  // from 1 to 255
 
+// Constants for Gleam mode
 #define ARR_LEN 6
 #define RGB_MAX 255
 #define MAX_STEPS ARR_LEN * RGB_MAX
@@ -50,12 +51,13 @@ int rgbRainbowMap[ARR_LEN][3] = {
   { 1, 0, 1 },
 };
 
-CRGB led[NUM_LEDS];
-
 //
+
+CRGB led[NUM_LEDS];
 
 
 // default net info for unconfigured devices
+// this values will be used if nothing else is specified on web
 netInfo homeNet = {
   .mqttHost = "10.3.14.15",
   .mqttUser = "",    //can be blank
@@ -530,15 +532,15 @@ void applyLight(struct lightState *lt) {
 void prepareManualColorChange(struct lightState *lt, int redDiff, int greenDiff, int blueDiff) {
   lt->mode = MANUAL;
 
-  #ifdef DEBUG_ENABLED
-    Serial.print("Preparing manual, got in: [");
-    Serial.print(redDiff);
-    Serial.print(", ");
-    Serial.print(greenDiff);
-    Serial.print(", ");
-    Serial.print(blueDiff);
-    Serial.println("].");
-  #endif
+  // #ifdef DEBUG_ENABLED
+  //   Serial.print("Preparing manual, got in: [");
+  //   Serial.print(redDiff);
+  //   Serial.print(", ");
+  //   Serial.print(greenDiff);
+  //   Serial.print(", ");
+  //   Serial.print(blueDiff);
+  //   Serial.println("].");
+  // #endif
 
   if (redDiff > 0)
     lt->redStep = lt->fadePeriod / redDiff;
@@ -547,17 +549,18 @@ void prepareManualColorChange(struct lightState *lt, int redDiff, int greenDiff,
   if (blueDiff > 0)
     lt->blueStep = lt->fadePeriod / blueDiff;
 
-  #ifdef DEBUG_ENABLED
-    Serial.print("So now steps are: [");
-    Serial.print(lt->redStep);
-    Serial.print(", ");
-    Serial.print(lt->greenStep);
-    Serial.print(", ");
-    Serial.print(lt->blueStep);
-    Serial.println("].");
-  #endif
+  // #ifdef DEBUG_ENABLED
+  //   Serial.print("So now steps are: [");
+  //   Serial.print(lt->redStep);
+  //   Serial.print(", ");
+  //   Serial.print(lt->greenStep);
+  //   Serial.print(", ");
+  //   Serial.print(lt->blueStep);
+  //   Serial.println("].");
+  // #endif
 
   lt->lightStep = 0;
+  lt->lightStepMetro.reset();
 }
 
 
@@ -590,6 +593,9 @@ void callbackMQTT(char* topic, byte* payload, unsigned int length) {
       Serial.println("Searching for numbers..");
     #endif
 
+    // Get values from a line, for example "cr255|120|042"
+    // This will be red=255, green=210, blue=42
+    // and "cr" means `color` (mode) `right` 
     const int newRedTarget = atoi(&newPayload[2]);
     const int newGreenTarget = atoi(&newPayload[6]);
     const int newBlueTarget = atoi(&newPayload[10]);
@@ -603,7 +609,6 @@ void callbackMQTT(char* topic, byte* payload, unsigned int length) {
       Serial.print(newBlueTarget);
       Serial.println("].");
     #endif
-
 
     if (
       (lt->red != newRedTarget) ||
@@ -633,36 +638,37 @@ void callbackMQTT(char* topic, byte* payload, unsigned int length) {
       #ifdef DEBUG_ENABLED
         Serial.println("Prepared, done.");
       #endif
-
     }
 
   } else if (mode == 'g') {  // gleam
-    // message: "gl300" = gleam left 300 (refresh rate)
-    lt->mode = GLEAM;
-    const int newGleamInterval = atoi(&newPayload[2]);
-    if (newGleamInterval > 0)
-      lt->gleamMetro.interval(newGleamInterval);
-    lt->gleamMetro.reset();
-
     // Just for fun show Purple status LED for 2 seconds on gleam interval change
     showStatus(CRGB::Purple);
     ledTimedOut = false;
     ledTimeout.interval(2000);
     ledTimeout.reset();
+    
+    // message: "gl300" = gleam left 300 (refresh rate)
+    const int newGleamInterval = atoi(&newPayload[2]);
+    if (newGleamInterval > 0)
+      lt->gleamMetro.interval(newGleamInterval);
+    lt->gleamMetro.reset();
+    lt->mode = GLEAM;
 
   } else if (mode == 'p') {  // power on|off
     // "pr1[g|m]" - power right 1 (on) gleam|manual
     // "pl0" - power left 0 (off) (any)
     if (payload[2] == '1') { // Power ON
-      if (payload[3] == 'g')
+      if (payload[3] == 'g') {
+        lt->gleamMetro.reset();
         lt->mode = GLEAM;
-      else
+      } else {
         prepareManualColorChange(
           lt,
           lt->redTagret,
           lt->greenTagret,
           lt->blueTagret
         );
+      }
     } else {  // if == '0' or whatever - power OFF
       lt->mode = STANDBY;
       showColor(lt, 0, 0, 0);
@@ -677,5 +683,4 @@ void callbackMQTT(char* topic, byte* payload, unsigned int length) {
 
     Serial.println("==OK Published!");
   #endif
-
 }
