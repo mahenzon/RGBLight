@@ -40,7 +40,7 @@
 // Constants for Gleam mode
 #define ARR_LEN 6
 #define RGB_MAX 255
-#define MAX_STEPS ARR_LEN * RGB_MAX
+#define MAX_GLEAM_STEPS ARR_LEN * RGB_MAX
 
 int rgbRainbowMap[ARR_LEN][3] = {
   { 1, 0, 0 },
@@ -469,7 +469,7 @@ void manualLight(struct lightState *lt) {
 void gleamLight(struct lightState *lt) {
   if (lt->gleamMetro.check() == 0) return;
 
-  if (lt->gleamStep >= MAX_STEPS) {
+  if (lt->gleamStep >= MAX_GLEAM_STEPS) {
     lt->gleamStep = 0;
   };
   gleamRgb(lt);
@@ -576,6 +576,7 @@ void callbackMQTT(char* topic, byte* payload, unsigned int length) {
     Serial.println("MQTT Message arrived: " + String(newPayload));
   #endif
 
+  const char mode = payload[0];
 
   struct lightState *lt;
 
@@ -583,9 +584,14 @@ void callbackMQTT(char* topic, byte* payload, unsigned int length) {
     lt = &lightLeft;
   else if (payload[1] == 'r')
     lt = &lightRight;
-  else return;
+  else if (mode == 's') {  // 's' for sync
+    // Check this only if left or right are not stated
+    lightLeft.gleamStep = MAX_GLEAM_STEPS;
+    lightRight.gleamStep = MAX_GLEAM_STEPS;
+    lightLeft.gleamMetro.reset();
+    lightRight.gleamMetro.reset();
+  } else return;
 
-  const char mode = payload[0];
 
   if (mode == 'c') {  // color
 
@@ -659,6 +665,7 @@ void callbackMQTT(char* topic, byte* payload, unsigned int length) {
     // "pl0" - power left 0 (off) (any)
     if (payload[2] == '1') { // Power ON
       if (payload[3] == 'g') {
+        gleamRgb(lt);  // Start Gleam mode instantly (turn on)
         lt->gleamMetro.reset();
         lt->mode = GLEAM;
       } else {
