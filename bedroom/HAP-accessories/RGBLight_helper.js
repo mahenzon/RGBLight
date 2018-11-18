@@ -1,18 +1,18 @@
-var Accessory = require('../').Accessory;
-var Service = require('../').Service;
-var Characteristic = require('../').Characteristic;
-var uuid = require('../').uuid;
+let Accessory = require('../').Accessory;
+let Service = require('../').Service;
+let Characteristic = require('../').Characteristic;
+let uuid = require('../').uuid;
 
-// var mqtt = require('mqtt');
-var mqtt = require('async-mqtt');
+// let mqtt = require('mqtt');
+let mqtt = require('async-mqtt');
 
-var options = {
+let options = {
   host: 'localhost',  // your MQTT broker server IP
   port: 1883,
   clientId: 'RGBLight'  // name to be introduced for MQTT broker
 };
 
-var client = mqtt.connect(options);
+let client = mqtt.connect(options);
 
 // __INT_MAX__ 2147483647: https://github.com/esp8266/Arduino/blob/8ae0746e4aeaf7c2a8881831f370b40347e47a50/tools/sdk/libc/xtensa-lx106-elf/include/limits.h#L66
 const maxGleamRate = 2353;  // 200: 5 minutes, 2353: 1 hour
@@ -23,7 +23,7 @@ const subtypeLight = 'LIGHT';
 
 
 function adaptGleamRate(inputRate) {
-  var minFrom, maxFrom, minTo, maxTo;
+  let minFrom, maxFrom, minTo, maxTo;
   if (inputRate > 40) {
     minFrom = 41;
     maxFrom = 100;
@@ -56,7 +56,7 @@ function mapRange(value, low1, high1, low2, high2) {
 
 // function to format numbers with fixed length (3) to make it easy to parse on ESP8266
 function formatNumberLength(num) {
-  var l = '' + num;
+  let l = '' + num;
   while (l.length < 3) {
       l = '0' + l;
   };
@@ -65,7 +65,7 @@ function formatNumberLength(num) {
 
 function HSVtoRGB(h, s, v) {
   s /= 100; v /= 100;
-  var r, g, b, i, f, p, q, t;
+  let r, g, b, i, f, p, q, t;
 
   h /= 60;
   i = Math.floor(h);
@@ -92,10 +92,10 @@ function newHomeKitAccessoryFromRGBLight(RGBLight) {
   // Generate a consistent UUID for our light Accessory that will remain the same even when
   // restarting our server. We use the `uuid.generate` helper function to create a deterministic
   // UUID based on an arbitrary "namespace" and the word "light".
-  var lightUUID = uuid.generate('hap-nodejs:accessories:light' + RGBLight.username);
+  let lightUUID = uuid.generate('hap-nodejs:accessories:light' + RGBLight.username);
 
   // This is the Accessory that we'll return to HAP-NodeJS that represents our light.
-  var lightAccessory = new Accessory(RGBLight.name, lightUUID);
+  let lightAccessory = new Accessory(RGBLight.name, lightUUID);
 
   // Add properties for publishing (in case we're using Core.js and not BridgedCore.js)
   lightAccessory.username = RGBLight.username;
@@ -212,7 +212,7 @@ function newHomeKitAccessoryFromRGBLight(RGBLight) {
 
 module.exports = {
   newRGBLight: function(name, mac, currentSide, mqttLightTopic) {
-    var RGBLight = {
+    let RGBLight = {
       name: 'RGB Light ' + name,  // Has to be unique!
       gleamName: 'RGB Gleam ' + name,
       pincode: '111-69-111',  // you can change numbers keeping '-' symbols
@@ -229,13 +229,12 @@ module.exports = {
       currentHue: 0,
       currentSaturation: 0,
       currentBrightness: 100,
-      currentGleamRate: 1,
 
       newHue: 0,
       newSaturation: 0,
       newBrightness: 100,
-      newGleamRate: 1,
 
+      gleamRate: 10,
 
       // outputLogs: false,  // change to true for debug purposes
       mqttLightTopic: mqttLightTopic,
@@ -266,7 +265,7 @@ module.exports = {
         if (status == this.lightPower) return;
         this.lightPower = status;
 
-        var state = 0;
+        let state = 0;
         if (this.lightPower) {
           state = 1;
           if (this.gleamPower) {  // Check if gleam is on - then power off
@@ -286,7 +285,7 @@ module.exports = {
         if (status == this.gleamPower) return;
         this.gleamPower = status;
 
-        var state = 0;
+        let state = 0;
         if (this.gleamPower) {
           state = 1;
           if (this.lightPower) {  // Check if manual is on - then power off
@@ -333,16 +332,15 @@ module.exports = {
       },
 
       setGleamRate: async function (rate) {
-        this.newGleamRate = adaptGleamRate(rate);
-        // if(this.outputLogs) console.log("'%s' got gleam rate %s, setting %s", this.name, rate, this.newGleamRate);
-        if (this.currentGleamRate != this.newGleamRate) {
-          this.sendGleamRate(this.newGleamRate);
-          this.currentGleamRate = this.newGleamRate;
+        // if(this.outputLogs) console.log("'%s' got gleam rate %s", this.name, rate);
+        if (rate != this.gleamRate) {
+          this.sendGleamRate(adaptGleamRate(rate));
+          this.gleamRate = rate;
         }
       },
       getGleamRate: function () {
         // if(this.outputLogs) console.log("'%s' gleam rate is %s", this.name, this.currentGleamRate);
-        return this.currentGleamRate;
+        return this.gleamRate;
       },
 
 
@@ -372,9 +370,9 @@ module.exports = {
           }
         }
 
-        var rgbArray = HSVtoRGB(this.currentHue, this.currentSaturation, this.currentBrightness);
+        let rgbArray = HSVtoRGB(this.currentHue, this.currentSaturation, this.currentBrightness);
         // if(this.outputLogs) console.log("Updating light with %s", rgbArray);
-        for (var i = 0; i < rgbArray.length; i++) {
+        for (let i = 0; i < rgbArray.length; i++) {
           rgbArray[i] = formatNumberLength(rgbArray[i]);
         }
         this.publish('c' + this.currentSide + rgbArray.join('|'));
