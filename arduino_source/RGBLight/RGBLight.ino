@@ -23,7 +23,7 @@
 //
 
 // topic that ESP8266 will be monitoring for new commands
-#define TOPIC "/home/RGBLight0"
+#define TOPIC "/home/RGBLight01"
 #define STATUS TOPIC "/status"
 #define STATUS_STR_LEN 50
 //

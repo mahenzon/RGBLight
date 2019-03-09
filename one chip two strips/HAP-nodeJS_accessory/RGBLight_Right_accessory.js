@@ -13,7 +13,7 @@ var options = {
 var client = mqtt.connect(options);
 
 // This value changes for every independent controller
-var mqttLightTopic = '/home/RGBLight0';  // MQTT topic to publish updates
+var mqttLightTopic = '/home/RGBLight01';  // MQTT topic to publish updates
 // This value changes for each side of each controller
 const currentSide = 'r';  // l for left, r for right
 // __INT_MAX__ 2147483647: https://github.com/esp8266/Arduino/blob/8ae0746e4aeaf7c2a8881831f370b40347e47a50/tools/sdk/libc/xtensa-lx106-elf/include/limits.h#L66
@@ -27,7 +27,7 @@ var RGBLight = {
   name: 'RGB Light Right',  // Has to be unique!
   gleamName: 'RGB Gleam',
   pincode: '111-69-111',  // you can change numbers keeping '-' symbols
-  username: 'A2:C0:81:F4:BA:9A',  // MAC like address used by HomeKit to differentiate accessories. Has to be unique in your net
+  username: 'A2:D0:81:F4:BA:9A',  // MAC like address used by HomeKit to differentiate accessories. Has to be unique in your net
   manufacturer: 'Suren Khorenyan',  // (optional)
   model: 'RGBLight_WebConfig',  // (optional)
   serialNumber: 'RGBLight_2_Right_001',  // (optional)
