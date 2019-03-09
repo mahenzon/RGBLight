@@ -1,5 +1,5 @@
+#include <Arduino.h>
 #include <Metro.h>
-#include <FastLED.h>
 #include <ESPHelper.h>
 #include <ESPHelperFS.h>
 #include <ESPHelperWebConfig.h>
@@ -31,11 +31,35 @@
 //
 #define NET_CONFIG_FILE "/netConfig.json"  // just don't change it
 
+//
 // Status LED related
 #define NUM_LEDS 1
 #define LED_PIN 13
 #define COLOR_ORDER GRB
-#define STATUS_LED_BRIGHTNESS 200  // from 1 to 255
+#define STATUS_LED_BRIGHTNESS 200  // from 1 to 255. 0 for maximun brightness
+
+// Predefined colors
+#define PIXEL_COLOR_BLACK 0x000000
+#define PIXEL_COLOR_BLUE 0x0000FF
+#define PIXEL_COLOR_DARKORANGE 0xFF8C00
+#define PIXEL_COLOR_GREEN 0x008000
+#define PIXEL_COLOR_PURPLE 0x800080
+#define PIXEL_COLOR_RED 0xFF0000
+#define PIXEL_COLOR_WHITE 0xFFFFFF
+
+
+// Color Strip
+#define NEO_GRB ((1 << 6) | (1 << 4) | (0 << 2) | (2))
+#define NEO_KHZ800 0x0000 // 800 KHz datastream
+#define PIXEL_T NEO_GRB + NEO_KHZ800
+#define NUM_BYTES NUM_LEDS * 3
+
+#define R_OFFSET (PIXEL_T >> 4) & 0b11
+#define G_OFFSET (PIXEL_T >> 2) & 0b11
+#define B_OFFSET PIXEL_T & 0b11
+// -- strip
+
+//
 
 // Constants for Gleam mode
 #define ARR_LEN 6
@@ -53,7 +77,10 @@ int rgbRainbowMap[ARR_LEN][3] = {
 
 //
 
-CRGB led[NUM_LEDS];
+// Status led setup
+uint8_t pixels[NUM_BYTES];
+
+uint32_t endTime = 0;
 
 
 // default net info for unconfigured devices
@@ -79,9 +106,6 @@ ESPHelperWebConfig webConfig;
 
 //
 
-int min(int a, int b) {
-  return (a < b ? a : b);
-}
 
 enum lightModes { STANDBY, MANUAL, GLEAM };
 
@@ -159,13 +183,13 @@ void configureLightState(struct lightState *lt) {
 }
 
 void sendStatus(String statusLine) {
-  statusLine.toCharArray(statusString, min(STATUS_STR_LEN, statusLine.length() + 1));
+  statusLine.toCharArray(statusString, _min(STATUS_STR_LEN, statusLine.length() + 1));
   myESP.publish(statusTopic, statusString);
 }
 
-void showStatus(CRGB color) {
-    led[0] = color;
-    FastLED.show();
+void showStatus(uint32_t color) {
+  NeoPixel_setPixelColor(0, color);
+  NeoPixel_show();
 }
 
 void setup() {
@@ -178,11 +202,11 @@ void setup() {
 
   delay(100);
 
-  // Setup FastLED
-  FastLED.addLeds<WS2812, LED_PIN, COLOR_ORDER>(led, NUM_LEDS);
-  FastLED.setBrightness(STATUS_LED_BRIGHTNESS);
+  // Setup status LED
+  NeoPixel_init();
+
   // Show status RED color
-  showStatus(CRGB::Red);
+  showStatus(PIXEL_COLOR_RED);
 
   //
   analogWriteRange(256);
@@ -235,9 +259,9 @@ void loop() {
 void turnOffStatusLEDifTimedOut() {
     if (ledTimedOut) return;
     if (ledTimeout.check()) {
-        showStatus(CRGB::White);
+        showStatus(PIXEL_COLOR_WHITE);
         delay(20);  // No long delays to keep Wi-Fi and MQTT connected
-        showStatus(CRGB::Black);
+        showStatus(PIXEL_COLOR_BLACK);
         ledTimedOut = true;
     }
 }
@@ -263,7 +287,7 @@ void manageESPHelper(int wifiStatus) {
     #endif
 
     // Turn off status LED
-    showStatus(CRGB::Black);
+    showStatus(PIXEL_COLOR_BLACK);
 
     myESP.saveConfigFile(webConfig.getConfig(), NET_CONFIG_FILE);
     delay(1000);
@@ -327,7 +351,7 @@ void startWifi() {
   myESP.OTA_setHostnameWithVersion(config.hostname);
   myESP.OTA_enable();
 
-  showStatus(CRGB::DarkOrange);
+  showStatus(PIXEL_COLOR_DARKORANGE);
 
   #ifdef DEBUG_ENABLED
     Serial.println("Connecting to network");
@@ -343,7 +367,7 @@ void startWifi() {
     yield();
   }
 
-  showStatus(CRGB::Green);
+  showStatus(PIXEL_COLOR_GREEN);
   ledTimedOut = false;
   ledTimeout.reset();
 
@@ -367,7 +391,7 @@ void checkForWifiTimeout() {
       Serial.println("Network Connection timeout - starting broadcast (AP) mode...");
     #endif
 
-    showStatus(CRGB::Blue);
+    showStatus(PIXEL_COLOR_BLUE);
     timeout = true;
     myESP.broadcastMode(broadcastSSID, broadcastPASS, broadcastIP);
   }
@@ -647,10 +671,10 @@ void callbackMQTT(char* topic, byte* payload, unsigned int length) {
     }
 
   } else if (mode == 'g') {  // gleam
-    // Just for fun show Purple status LED for 2 seconds on gleam interval change
-    showStatus(CRGB::Purple);
+    // Just for fun show Purple status LED for 1.5 seconds on gleam interval change
+    showStatus(PIXEL_COLOR_PURPLE);
     ledTimedOut = false;
-    ledTimeout.interval(2000);
+    ledTimeout.interval(1500);
     ledTimeout.reset();
     
     // message: "gl300" = gleam left 300 (refresh rate)
@@ -690,4 +714,157 @@ void callbackMQTT(char* topic, byte* payload, unsigned int length) {
 
     Serial.println("==OK Published!");
   #endif
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+// Color related stuff
+
+
+//
+// Adafruit Neopixel cutout
+
+// Set pixel color from 'packed' 32-bit RGB color:
+void NeoPixel_setPixelColor(uint8_t n, uint32_t c) {
+  uint8_t *p,
+    r = (uint8_t)(c >> 16),
+    g = (uint8_t)(c >> 8),
+    b = (uint8_t)c;
+
+  if (STATUS_LED_BRIGHTNESS) {
+    r = (r * STATUS_LED_BRIGHTNESS) >> 8;
+    g = (g * STATUS_LED_BRIGHTNESS) >> 8;
+    b = (b * STATUS_LED_BRIGHTNESS) >> 8;
+  }
+
+  p = &pixels[n * 3];    // 3 bytes per pixel
+  p[R_OFFSET] = r;
+  p[G_OFFSET] = g;
+  p[B_OFFSET] = b;
+}
+
+void NeoPixel_init() {
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
+  NeoPixel_setPixelColor(0, PIXEL_COLOR_BLACK);
+}
+
+
+//
+// Show color
+
+// esp8266 ......
+
+#if defined(ESP8266) || defined(ESP32)
+
+#ifdef ESP8266
+#include <eagle_soc.h>
+#endif
+
+static uint32_t _getCycleCount(void) __attribute__((always_inline));
+static inline uint32_t _getCycleCount(void) {
+  uint32_t ccount;
+  __asm__ __volatile__("rsr %0,ccount":"=a" (ccount));
+  return ccount;
+}
+
+#ifdef ESP8266
+
+void ICACHE_RAM_ATTR espShow(
+ uint8_t pin, uint8_t *pixels, uint32_t numBytes) {
+#else
+void espShow(
+ uint8_t pin, uint8_t *pixels, uint32_t numBytes) {
+#endif
+
+#define CYCLES_800_T0H  (F_CPU / 2500000) // 0.4us
+#define CYCLES_800_T1H  (F_CPU / 1250000) // 0.8us
+#define CYCLES_800      (F_CPU /  800000) // 1.25us per bit
+#define CYCLES_400_T0H  (F_CPU / 2000000) // 0.5uS
+#define CYCLES_400_T1H  (F_CPU /  833333) // 1.2us
+#define CYCLES_400      (F_CPU /  400000) // 2.5us per bit
+
+  uint8_t *p, *end, pix, mask;
+  uint32_t t, time0, time1, period, c, startTime, pinMask;
+
+  pinMask   = _BV(pin);
+  p         =  pixels;
+  end       =  p + numBytes;
+  pix       = *p++;
+  mask      = 0x80;
+  startTime = 0;
+
+#ifdef NEO_KHZ400
+  boolean is800KHz = true;
+  if(is800KHz) {
+#endif
+    time0  = CYCLES_800_T0H;
+    time1  = CYCLES_800_T1H;
+    period = CYCLES_800;
+#ifdef NEO_KHZ400
+  } else { // 400 KHz bitstream
+    time0  = CYCLES_400_T0H;
+    time1  = CYCLES_400_T1H;
+    period = CYCLES_400;
+  }
+#endif
+
+  for(t = time0;; t = time0) {
+    if(pix & mask) t = time1;                             // Bit high duration
+    while(((c = _getCycleCount()) - startTime) < period); // Wait for bit start
+#ifdef ESP8266
+    GPIO_REG_WRITE(GPIO_OUT_W1TS_ADDRESS, pinMask);       // Set high
+#else
+    gpio_set_level(pin, HIGH);
+#endif
+    startTime = c;                                        // Save start time
+    while(((c = _getCycleCount()) - startTime) < t);      // Wait high duration
+#ifdef ESP8266
+    GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS, pinMask);       // Set low
+#else
+    gpio_set_level(pin, LOW);
+#endif
+    if(!(mask >>= 1)) {                                   // Next bit/byte
+      if(p >= end) break;
+      pix  = *p++;
+      mask = 0x80;
+    }
+  }
+  while((_getCycleCount() - startTime) < period); // Wait for last bit
+}
+
+#endif // ESP8266
+
+// .....
+
+
+void NeoPixel_show() {
+
+  while((micros() - endTime) < 300L);
+
+  // NRF52 may use PWM + DMA (if available), may not need to disable interrupt
+#if !( defined(NRF52) || defined(NRF52_SERIES) )
+  noInterrupts(); // Need 100% focus on instruction timing
+#endif
+
+
+#if defined(ESP8266) || defined(ESP32)
+
+  espShow(LED_PIN, pixels, NUM_BYTES);
+
+#else
+#error Architecture not supported
+#endif
+
+
+// END ARCHITECTURE SELECT ------------------------------------------------
+
+#ifndef NRF52
+  interrupts();
+#endif
+
+  endTime = micros(); // Save EOD time for latch on next call
 }
