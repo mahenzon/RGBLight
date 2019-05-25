@@ -11,10 +11,11 @@
 #include <ESPHelperWebConfig.h>
 
 // Some configs
-// #define DEBUG_ENABLED  // Uncomment to print debug info to console
-#define DEFAULT_GLEAM_DELAY 200  // 200: 5 minutes  // 2353: 1 hour
+#define DEBUG_ENABLED  // Uncomment to print debug info to console
+#define DEFAULT_GLEAM_DELAY 200  // Full cycle in.. 200: 5 minutes; 2353: 1 hour
 #define WIFI_CONNECT_TIMEOUT 20000  // ms after enable AP mode
-#define DISABLE_LED_ON_SUCCESS_AFTER 20000  // 20000ms = 20 seconds. Disable status LED
+#define WIFI_RECONNECT_TIMEOUT 5 * 60 * 1000  // timeout (ms), then disable AP mode and attempt to reconnect WiFi
+#define DISABLE_LED_ON_SUCCESS_AFTER 20000  // 20000 ms = 20 seconds. Disable status LED
 #define MAXIMUM_FADE_DURATION 1000
 //
 
@@ -47,6 +48,7 @@
 // Predefined colors
 #define PIXEL_COLOR_BLACK 0x000000
 #define PIXEL_COLOR_BLUE 0x0000FF
+#define PIXEL_COLOR_SLATEBLUE 0x6A5ACD
 #define PIXEL_COLOR_DARKORANGE 0xFF8C00
 #define PIXEL_COLOR_GREEN 0x008000
 #define PIXEL_COLOR_PURPLE 0x800080
@@ -161,6 +163,10 @@ bool ledTimedOut = true;
 Metro connectTimeout = Metro(WIFI_CONNECT_TIMEOUT);
 bool timeout = false;
 
+// 
+Metro connectTimeoutAP = Metro(WIFI_RECONNECT_TIMEOUT);
+uint32_t lastStatusColor = PIXEL_COLOR_BLACK;
+
 // AP moade setup info
 const char* broadcastSSID = "ESP-Hotspot";
 const char* broadcastPASS = "";
@@ -197,8 +203,10 @@ void sendStatus(String statusLine) {
 }
 
 void showStatus(uint32_t color) {
+  if (lastStatusColor == color) return;
   NeoPixel_setPixelColor(0, color);
   NeoPixel_show();
+  lastStatusColor = color;
 }
 
 void setup() {
@@ -240,6 +248,7 @@ void setup() {
   myESP.addSubscription(lightTopic);
   myESP.setCallback(callbackMQTT);
 
+  startSettings();
   // startup the Wi-Fi and web server
   startWifi();
 
@@ -281,14 +290,22 @@ void turnOffStatusLEDifTimedOut() {
 void manageESPHelper(int wifiStatus) {
   // if the unit is broadcasting or connected to Wi-Fi then reset the timeout vars
   if (wifiStatus == BROADCAST || wifiStatus >= WIFI_ONLY) {
-    connectTimeout.reset();
     timeout = false;
+    connectTimeout.reset();
+
+    // Check if AP mode is ran for too long
+    if (wifiStatus == BROADCAST && checkForAPTimeout()) {
+      startWifi();
+      return;
+    }
   }
   // otherwise check for a timeout condition and handle setting up broadcast
   else if (wifiStatus < WIFI_ONLY) {
     checkForWifiTimeout();
   }
+
   // handle saving a new network config
+  // we need to run webConfig.handle() as many times as we can
   if (webConfig.handle()) {
 
     #ifdef DEBUG_ENABLED
@@ -349,8 +366,7 @@ void loadConfig() {
   config = myESP.getNetInfo();
 }
 
-
-void startWifi() {
+void startSettings() {
   // if ok, config file will be filled
   loadConfig();
 
@@ -359,6 +375,9 @@ void startWifi() {
   myESP.OTA_setPassword(config.otaPassword);
   myESP.OTA_setHostnameWithVersion(config.hostname);
   myESP.OTA_enable();
+}
+
+void startWifi() {
 
   showStatus(PIXEL_COLOR_DARKORANGE);
 
@@ -403,7 +422,33 @@ void checkForWifiTimeout() {
     showStatus(PIXEL_COLOR_BLUE);
     timeout = true;
     myESP.broadcastMode(broadcastSSID, broadcastPASS, broadcastIP);
+    connectTimeoutAP.reset();
   }
+}
+
+int checkForAPTimeout() {
+  uint8_t connectedClients = myESP.softAPgetStationNum();
+  if (connectedClients) {
+    showStatus(PIXEL_COLOR_SLATEBLUE);
+    connectTimeoutAP.reset();
+
+    #ifdef DEBUG_ENABLED
+      Serial.print("Stations connected to soft-AP = ");
+      Serial.println(connectedClients);
+    #endif
+
+    return 0;  // if there are any connections - leave the funciton
+  }
+
+  showStatus(PIXEL_COLOR_BLUE);
+  if (connectTimeoutAP.check() == 0) return 0;
+
+  #ifdef DEBUG_ENABLED
+    Serial.println("Soft-AP Mode timeout: no connections. Attempting to reconnect...");
+  #endif
+
+  myESP.disableBroadcast();
+  return 1;
 }
 
 /////////////////////////////////////////////////////////////////////////
