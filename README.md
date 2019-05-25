@@ -18,3 +18,8 @@ Since the controller accepts prepared commands, there's another necessary part i
 
 
 Full HOWTO coming [not very] soon...
+
+
+### Schematic:
+
+![schematic](assets/schematic.svg)
